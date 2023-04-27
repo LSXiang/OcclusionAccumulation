@@ -134,20 +134,20 @@ void OcclusionAccumulation::movingObjectDetection(const cv::Mat& depth_cur,
 void OcclusionAccumulation::DepthCompensation(const cv::Matx33f& R,
                                               const cv::Vec3f& t) {
   // Fill current depth by previous warped depth
-  cv::add(depth_cur_compensated_, depth_prev_warped_,
-          depth_cur_compensated_, depth_cur_compensated_ == 0.f);
+  depth_prev_warped_.copyTo(depth_cur_compensated_,
+                            depth_cur_compensated_ == 0.f);
 
   // Get current warped depth by current depth
   getWarpedImage(depth_cur_compensated_, depth_cur_compensated_,
                  depth_cur_compensated_, R.t(), -R.t()*t, depth_prev_warped_);
 
   // Fill next depth by current depth warped
-  cv::add(depth_next_compensated_, depth_prev_warped_,
-          depth_next_compensated_, depth_next_compensated_ == 0.f);
+  depth_prev_warped_.copyTo(depth_next_compensated_,
+                            depth_next_compensated_ == 0.f);
 
   // Fill current warped depth by next depth
-  cv::add(depth_prev_warped_, depth_next_compensated_,
-          depth_prev_warped_, depth_prev_warped_ == 0.f);
+  depth_next_compensated_.copyTo(depth_prev_warped_,
+                                 depth_prev_warped_ == 0.f);
 }
 
 void OcclusionAccumulation::getWarpedImage(cv::InputArray i_ref,
@@ -215,8 +215,10 @@ void OcclusionAccumulation::getWarpedImage(cv::InputArray i_ref,
   if (residual.needed())
     residual_ = ir_ - i_ref_;
 
-//  ir_.convertTo(ir_, CV_16U, depth_unit_);
-//  cv::imwrite("./test.png", ir_);
+//  std::ofstream myfile;
+//  myfile.open("dubug.csv");
+//  myfile << cv::format(ir_, cv::Formatter::FMT_CSV) << std::endl;
+//  myfile.close();
 }
 
 void OcclusionAccumulation::accumInterpolation(

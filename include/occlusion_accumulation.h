@@ -20,11 +20,10 @@ class OcclusionAccumulation {
                         int object_threshold = 5e2);
 
   void movingObjectPrediction();
-  void movingObjectDetection(const cv::Mat& depth_cur,
-                             const cv::Mat& depth_next,
-                             const cv::Matx33f& R,
-                             const cv::Vec3f& t,
-                             cv::Mat& object_mask);
+  const cv::Mat movingObjectDetection(const cv::Mat& depth_cur,
+                                      const cv::Mat& depth_next,
+                                      const cv::Matx33f& R,
+                                      const cv::Vec3f& t);
 
  private:
   void DepthCompensation(const cv::Matx33f& R, const cv::Vec3f& t);
@@ -36,8 +35,8 @@ class OcclusionAccumulation {
                       cv::InputOutputArray ir,
                       cv::OutputArray residual = cv::noArray(),
                       bool update_warped = true);
-  void accumInterpolation(cv::InputOutputArray source_mask,
-                          cv::InputOutputArray target_mask,
+  void accumInterpolation(cv::InputArray source_mask,
+                          cv::InputArray target_mask,
                           bool update_derive = true);
   std::vector<int> bwConnect(cv::InputArray label,
                              cv::InputArray ref,
@@ -47,7 +46,7 @@ class OcclusionAccumulation {
   cv::Mat accumulated_dZdt_;  // A(u)
   cv::Mat predicted_area_;
 
-  cv::Mat background_mask_;   // B(u)
+  cv::Mat object_mask_;   // ~B(u)
   cv::Mat depth_cur_compensated_;
   cv::Mat depth_next_compensated_;
 

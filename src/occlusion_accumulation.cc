@@ -6,10 +6,11 @@
 
 #include "occlusion_accumulation.h"
 
+#include <iostream>
+#include <fstream>
 #include <vector>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
-
 
 OcclusionAccumulation::OcclusionAccumulation(const cv::Matx33f& K,
                                              const cv::Size& size,
@@ -23,7 +24,7 @@ OcclusionAccumulation::OcclusionAccumulation(const cv::Matx33f& K,
   accumulated_dZdt_ = cv::Mat::zeros(size_, CV_32F);
   predicted_area_ = cv::Mat::zeros(size_, CV_8U);
 
-  background_mask_ = cv::Mat::ones(size_, CV_8U);
+  object_mask_ = cv::Mat::ones(size_, CV_8U);
   depth_cur_compensated_ = cv::Mat::ones(size_, CV_32F);
   depth_next_compensated_ = cv::Mat::ones(size_, CV_32F);
 }
@@ -32,13 +33,11 @@ void OcclusionAccumulation::movingObjectPrediction() {
 
 }
 
-#include <fstream>
-
-void OcclusionAccumulation::movingObjectDetection(const cv::Mat& depth_cur,
-                                                  const cv::Mat& depth_next,
-                                                  const cv::Matx33f& R,
-                                                  const cv::Vec3f& t,
-                                                  cv::Mat& object_mask) {
+const cv::Mat OcclusionAccumulation::movingObjectDetection(
+    const cv::Mat& depth_cur,
+    const cv::Mat& depth_next,
+    const cv::Matx33f& R,
+    const cv::Vec3f& t) {
   depth_cur.convertTo(depth_cur_compensated_, CV_32F, 1.f/depth_unit_);
   depth_next.convertTo(depth_next_compensated_, CV_32F, 1.f/depth_unit_);
 
@@ -78,18 +77,21 @@ void OcclusionAccumulation::movingObjectDetection(const cv::Mat& depth_cur,
                               cv::Scalar(0));
   new_discovered_area.setTo(1,
       (depth_cur_warped == 0.f) - (depth_next_compensated_ == 0.f));
-  // Initial background mask
-  background_mask_ = ~(accumulated_dZdt_ > tau_alpha);
+  // Initial object (~background) mask
+  object_mask_ = accumulated_dZdt_ > tau_alpha;
+
+  // Update predicted area
+  predicted_area_ += new_discovered_area;
 
   // Label objects
   cv::Mat object_label;
-  auto object_num = cv::connectedComponents(~background_mask_,
+  auto object_num = cv::connectedComponents(object_mask_,
                                             object_label,
                                             8,
                                             CV_16U);
   for (int object_idx = 1, update_derive = 1;
       object_idx < object_num; ++object_idx) {
-    cv::Mat object_area = (object_label == object_idx);
+    cv::Mat object_area = (object_label == object_idx)/255;
     if (cv::sum(object_area)[0] < object_threshold_) {
       // Ignore small object segmentations
       accumulated_dZdt_.setTo(0, object_area);
@@ -101,11 +103,11 @@ void OcclusionAccumulation::movingObjectDetection(const cv::Mat& depth_cur,
   }
 
   // Equation 7
-  object_mask = (accumulated_dZdt_ > tau_alpha);
+  object_mask_ = (accumulated_dZdt_ > tau_alpha) / 255;
 
   // Erase predicted areas that are not neighborhood of moving objects
   // Update predicted area
-  predicted_area_ = (predicted_area_ + new_discovered_area).mul(object_mask);
+  predicted_area_ = predicted_area_.mul(object_mask_);
   // Label predicted area
   cv::Mat& predicted_area_label = object_label;
   auto predicted_area_num = cv::connectedComponents(predicted_area_,
@@ -115,19 +117,19 @@ void OcclusionAccumulation::movingObjectDetection(const cv::Mat& depth_cur,
   if (predicted_area_num > 1) {
     // Check predicted area is neighborhood of moving object
     auto connect_label = bwConnect(predicted_area_label,
-                                   (object_mask - predicted_area_),
+                                   (object_mask_ - predicted_area_),
                                    predicted_area_num);
     // Erase unconnected area
     for (int label_idx = 1; label_idx < predicted_area_num; ++label_idx) {
       if (connect_label.at(label_idx) == 0) {
-        object_mask.setTo(0, predicted_area_label == label_idx);
+        object_mask_.setTo(0, predicted_area_label == label_idx);
         accumulated_dZdt_.setTo(0, predicted_area_label == label_idx);
       }
     }
   }
 
   // Moving object detection result
-  background_mask_ = ~object_mask;
+  return object_mask_;
 }
 
 
@@ -221,13 +223,12 @@ void OcclusionAccumulation::getWarpedImage(cv::InputArray i_ref,
 //  myfile.close();
 }
 
-void OcclusionAccumulation::accumInterpolation(
-    cv::InputOutputArray source_mask,
-    cv::InputOutputArray target_mask,
-    bool update_derive) {
+void OcclusionAccumulation::accumInterpolation(cv::InputArray source_mask,
+                                               cv::InputArray target_mask,
+                                               bool update_derive) {
   static cv::Mat dxn, dyn, dxp, dyp;
-  auto& source_mask_ = source_mask.getMatRef();
-  auto& target_mask_ = target_mask.getMatRef();
+  cv::Mat source_mask_ = source_mask.getMat();
+  cv::Mat target_mask_ = target_mask.getMat();
 
   auto getdxynp = [](cv::InputArray image,
                      cv::OutputArray dxn, cv::OutputArray dyn,
@@ -271,26 +272,33 @@ void OcclusionAccumulation::accumInterpolation(
   cv::Mat is_near_something = cv::Mat::zeros(source_mask_.size(), CV_32F);
   const int rows = source_mask_.rows, cols = source_mask_.cols;
   do {
-    near_xp(cv::Range(1, rows-1), cv::Range(1, cols-1)) =
+    cv::Mat mask =
         (source_mask_(cv::Range(1, rows-1), cv::Range(2, cols)).mul(
             target_mask_(cv::Range(1, rows-1), cv::Range(1, cols-1)))).mul(
             cv::abs(dxp(cv::Range(1, rows-1), cv::Range(1, cols-1))) <
                 dxy_threshold);
-    near_yp(cv::Range(1, rows-1), cv::Range(1, cols-1)) =
+    near_xp(cv::Range(1, rows-1), cv::Range(1, cols-1)).setTo(1, mask);
+
+    mask =
         (source_mask_(cv::Range(2, rows), cv::Range(1, cols-1)).mul(
             target_mask_(cv::Range(1, rows-1), cv::Range(1, cols-1)))).mul(
             cv::abs(dyp(cv::Range(1, rows-1), cv::Range(1, cols-1))) <
                 dxy_threshold);
-    near_xn(cv::Range(1, rows-1), cv::Range(1, cols-1)) =
+    near_yp(cv::Range(1, rows-1), cv::Range(1, cols-1)).setTo(1, mask);
+
+    mask =
         (source_mask_(cv::Range(1, rows-1), cv::Range(0, cols-2)).mul(
             target_mask_(cv::Range(1, rows-1), cv::Range(1, cols-1)))).mul(
             cv::abs(dxn(cv::Range(1, rows-1), cv::Range(1, cols-1))) <
                 dxy_threshold);
-    near_yn(cv::Range(1, rows-1), cv::Range(1, cols-1)) =
+    near_xn(cv::Range(1, rows-1), cv::Range(1, cols-1)).setTo(1, mask);
+
+    mask =
         (source_mask_(cv::Range(0, rows-2), cv::Range(1, cols-1)).mul(
             target_mask_(cv::Range(1, rows-1), cv::Range(1, cols-1)))).mul(
             cv::abs(dyn(cv::Range(1, rows-1), cv::Range(1, cols-1))) <
                 dxy_threshold);
+    near_yn(cv::Range(1, rows-1), cv::Range(1, cols-1)).setTo(1, mask);
 
     is_near_something = near_xp + near_yp + near_xn + near_yn;
 
@@ -309,11 +317,11 @@ void OcclusionAccumulation::accumInterpolation(
                 near_yn(cv::Range(1, rows-1), cv::Range(1, cols-1)))
         ).mul(1./is_near_something(cv::Range(1, rows-1),cv::Range(1, cols-1)));
 
-    cv::Mat mask = is_near_something != 0.f;
+    mask = is_near_something != 0.f;
     restoration.copyTo(accumulated_dZdt_, mask);
     target_mask_.setTo(0, mask);
     source_mask_.setTo(1, mask);
-
+    near_xp.setTo(0), near_yp.setTo(0), near_xn.setTo(0), near_yn.setTo(0);
   } while (cv::sum(is_near_something)[0] > 10);
 }
 

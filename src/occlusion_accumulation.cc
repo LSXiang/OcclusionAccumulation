@@ -6,11 +6,7 @@
 
 #include "occlusion_accumulation.h"
 
-#include <iostream>
-#include <fstream>
-#include <vector>
 #include <opencv2/imgproc/imgproc.hpp>
-#include <opencv2/highgui/highgui.hpp>
 
 OcclusionAccumulation::OcclusionAccumulation(const cv::Matx33f& K,
                                              const cv::Size& size,
@@ -116,14 +112,15 @@ const cv::Mat OcclusionAccumulation::movingObjectDetection(
                                                     CV_16U);
   if (predicted_area_num > 1) {
     // Check predicted area is neighborhood of moving object
-    auto connect_label = bwConnect(predicted_area_label,
-                                   (object_mask_ - predicted_area_),
-                                   predicted_area_num);
+    const auto& connect_label = bwConnect(predicted_area_label,
+                                          (object_mask_ - predicted_area_),
+                                          predicted_area_num);
     // Erase unconnected area
     for (int label_idx = 1; label_idx < predicted_area_num; ++label_idx) {
       if (connect_label.at(label_idx) == 0) {
-        object_mask_.setTo(0, predicted_area_label == label_idx);
-        accumulated_dZdt_.setTo(0, predicted_area_label == label_idx);
+        cv::Mat mask = predicted_area_label == label_idx;
+        object_mask_.setTo(0, mask);
+        accumulated_dZdt_.setTo(0, mask);
       }
     }
   }
@@ -196,6 +193,7 @@ void OcclusionAccumulation::getWarpedImage(cv::InputArray i_ref,
     x = x.reshape(0, d_ref_.rows*d_ref_.cols);
     y = y.reshape(0, d_ref_.rows*d_ref_.cols);
     cv::Mat depth = d_ref_.reshape(0, d_ref_.rows*d_ref_.cols);
+    cv::Mat mask = depth == 0.f;
 
     x = ((x - K_(0, 2)) / K_(0, 0)).mul(depth);
     y = ((y - K_(1, 2)) / K_(1, 1)).mul(depth);
@@ -206,6 +204,8 @@ void OcclusionAccumulation::getWarpedImage(cv::InputArray i_ref,
 
     x = K_(0, 0) * x.mul(1.f / z) + K_(0, 2);
     y = K_(1, 1) * y.mul(1.f / z) + K_(1, 2);
+    x.setTo(-1.f, mask);
+    y.setTo(-1.f, mask);
 
     x = x.reshape(0, d_ref_.rows);
     y = y.reshape(0, d_ref_.rows);
@@ -213,14 +213,10 @@ void OcclusionAccumulation::getWarpedImage(cv::InputArray i_ref,
 
   if (update_warped)
     getWarp(x_coordinate, y_coordinate);
+
   cv::remap(i_, ir_, x_coordinate, y_coordinate, cv::INTER_NEAREST);
   if (residual.needed())
     residual_ = ir_ - i_ref_;
-
-//  std::ofstream myfile;
-//  myfile.open("dubug.csv");
-//  myfile << cv::format(ir_, cv::Formatter::FMT_CSV) << std::endl;
-//  myfile.close();
 }
 
 void OcclusionAccumulation::accumInterpolation(cv::InputArray source_mask,
@@ -358,8 +354,8 @@ std::vector<int> OcclusionAccumulation::bwConnect(cv::InputArray label,
   cv::findNonZero(dxy, idx);
 
   for (const auto& item : idx) {
-    if (label_.at<uchar>(item))
-      result.at(label_.at<uchar>(item)) = 1;
+    if (label_.at<uint16_t>(item))
+      result.at(label_.at<uint16_t>(item)) = 1;
   }
   return result;
 }

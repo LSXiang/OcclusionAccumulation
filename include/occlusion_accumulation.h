@@ -7,6 +7,7 @@
 #ifndef OCCLUSIONACCUMULATION_H_
 #define OCCLUSIONACCUMULATION_H_
 
+#include <vector>
 #include <opencv2/core/core.hpp>
 
 class OcclusionAccumulation {

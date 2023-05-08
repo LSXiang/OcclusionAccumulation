@@ -61,13 +61,16 @@ int main(int argc, char** argv) {
 
     cv::Mat object_mask;
     auto t1 = std::chrono::steady_clock::now();
-    occlusion_accumulation.movingObjectDetection(depth_prev, depth_next, R, t, object_mask);
+    object_mask = occlusion_accumulation.movingObjectDetection(depth_prev, depth_next, R, t);
     auto t2 = std::chrono::steady_clock::now();
     auto time_used = std::chrono::duration_cast<std::chrono::duration<double>>(t2 - t1);
     use_time += time_used.count();
 
     depth_prev = depth_next;
-    cv::imshow("mask", object_mask);
+
+    cv::Mat mask(rgb.size(), rgb.type(), cv::Scalar(0, 0, 0));
+    mask.setTo(cv::Scalar(127, 0, 127), object_mask);
+    cv::imshow("Moving object detection", mask + rgb);
     cv::waitKey(1);
   }
   std::cout << "occlusion_accumulation.movingObjectDetection mean time cost = "

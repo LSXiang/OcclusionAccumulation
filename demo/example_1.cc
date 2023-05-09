@@ -1,7 +1,7 @@
 // OcclusionAccumulation
-// -- Moving object detection for visual odometry in a dynamic environment based on occlusion accumulation
+//   Moving object detection for visual odometry
+//   in a dynamic environment based on occlusion accumulation
 // Copyright (c) 2023, Algorithm Development Team. All rights reserved.
-//
 // This software was developed of Jacob.lsx
 
 #include <dirent.h>
@@ -57,7 +57,7 @@ int main(int argc, char** argv) {
     cv::Mat rgb = cv::imread(rgb_files.at(i), -1);
     auto& pose = poses.at(i-1);
     cv::Matx33f& R = pose.first;
-    cv::Vec3f t = pose.second;
+    cv::Vec3f& t = pose.second;
 
     cv::Mat object_mask;
     auto t1 = std::chrono::steady_clock::now();

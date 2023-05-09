@@ -13,9 +13,11 @@ OcclusionAccumulation::OcclusionAccumulation(const cv::Matx33f& K,
                                              float depth_unit,
                                              float alpha ,
                                              float beta,
-                                             int object_threshold)
+                                             int object_threshold,
+                                             int accum_interpolation_threshold)
     : K_(K), size_(size), depth_unit_(depth_unit),
-      alpha_(alpha), beta_(beta), object_threshold_(object_threshold) {
+      alpha_(alpha), beta_(beta), object_threshold_(object_threshold),
+      accum_interpolation_threshold_(accum_interpolation_threshold) {
   depth_prev_warped_ = cv::Mat::zeros(size_, CV_32F);
   accumulated_dZdt_ = cv::Mat::zeros(size_, CV_32F);
   predicted_area_ = cv::Mat::zeros(size_, CV_8U);
@@ -26,10 +28,10 @@ OcclusionAccumulation::OcclusionAccumulation(const cv::Matx33f& K,
 }
 
 void OcclusionAccumulation::movingObjectPrediction() {
-
+  // TODO
 }
 
-const cv::Mat OcclusionAccumulation::movingObjectDetection(
+cv::Mat OcclusionAccumulation::movingObjectDetection(
     const cv::Mat& depth_cur,
     const cv::Mat& depth_next,
     const cv::Matx33f& R,
@@ -99,7 +101,7 @@ const cv::Mat OcclusionAccumulation::movingObjectDetection(
   }
 
   // Equation 7
-  object_mask_ = (accumulated_dZdt_ > tau_alpha) / 255;
+  object_mask_ = (accumulated_dZdt_ > tau_alpha);
 
   // Erase predicted areas that are not neighborhood of moving objects
   // Update predicted area
@@ -318,7 +320,7 @@ void OcclusionAccumulation::accumInterpolation(cv::InputArray source_mask,
     target_mask_.setTo(0, mask);
     source_mask_.setTo(1, mask);
     near_xp.setTo(0), near_yp.setTo(0), near_xn.setTo(0), near_yn.setTo(0);
-  } while (cv::sum(is_near_something)[0] > 10);
+  } while (cv::sum(is_near_something)[0] > accum_interpolation_threshold_);
 }
 
 std::vector<int> OcclusionAccumulation::bwConnect(cv::InputArray label,

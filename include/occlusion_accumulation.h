@@ -18,13 +18,14 @@ class OcclusionAccumulation {
                         float depth_unit = 1000.f,
                         float alpha = 0.15f,
                         float beta = 0.225f,
-                        int object_threshold = 5e2);
+                        int object_threshold = 500,
+                        int accum_interpolation_threshold = 10);
 
   void movingObjectPrediction();
-  const cv::Mat movingObjectDetection(const cv::Mat& depth_cur,
-                                      const cv::Mat& depth_next,
-                                      const cv::Matx33f& R,
-                                      const cv::Vec3f& t);
+  cv::Mat movingObjectDetection(const cv::Mat& depth_cur,
+                                const cv::Mat& depth_next,
+                                const cv::Matx33f& R,
+                                const cv::Vec3f& t);
 
  private:
   void DepthCompensation(const cv::Matx33f& R, const cv::Vec3f& t);
@@ -57,6 +58,7 @@ class OcclusionAccumulation {
   float alpha_;
   float beta_;
   int object_threshold_;
+  int accum_interpolation_threshold_;
 };
 
 #endif // OCCLUSIONACCUMULATION_H_
